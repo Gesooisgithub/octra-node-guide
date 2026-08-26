@@ -23,7 +23,7 @@ every network step. You will not earn anything.
 
 ---
 
-## What you need
+## Requirements
 
 - A machine with **4+ cores, 8+ GB RAM, 120+ GB disk**, running **Ubuntu 22.04 or 24.04**
 - A **public IP address** the machine actually owns (only if you want to validate)
