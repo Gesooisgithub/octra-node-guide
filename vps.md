@@ -16,6 +16,10 @@ No commands. When ordering, make sure you get:
 - **A dedicated public IPv4 address**
 - **Root access over SSH**
 
+**Which provider?** **Contabo** is the usual recommendation for this — the official Octra
+README names it too, and it is what this guide was written on. Any provider that meets the
+list above works just as well.
+
 If the provider offers its own cloud firewall, **leave it off**. You will set up the
 firewall on the machine itself in Step 4, and running both makes problems twice as hard to
 find.
@@ -258,11 +262,29 @@ If it times out, fix it before going further — you cannot validate without thi
 
 ## Step 13 — Get tokens
 
-Ask for devnet tokens in Octra's community channels. **Give only your `oct...` address.**
+You need **1,000,000 raw units (1 OCT)** for the bond, plus a little extra for fees.
 
-You need **1,000,000 raw units (1 OCT)** plus a little extra for fees.
+### 13a. Find your address
 
-Check they arrived:
+It is the `oct...` string printed at the end of Step 9. If you did not write it down:
+
+```bash
+octra stat.sh | grep '^address'
+```
+
+**You should see:** `address = oct...` followed by a long string.
+
+That is your **public** address. It is safe to share and it is the only thing the faucet
+needs. **Never send anyone the contents of `wallet.json`** — that is the key itself, and
+nobody legitimate will ever ask for it.
+
+### 13b. Claim from the faucet bot
+
+The claim is made through the Telegram bot **[@octradevbot](https://t.me/octradevbot)**.
+
+Open it in Telegram, start it, and give it the `oct...` address from 13a when it asks.
+
+### 13c. Check they arrived
 
 ```bash
 curl -s https://devnet.octrascan.io/rpc -H 'content-type: application/json' \
