@@ -1,7 +1,9 @@
 # Octra Node Guide
 
-Step-by-step instructions for running a node on the Octra devnet. Copy, paste, check the
-expected output, move to the next step.
+Step-by-step guide to running a node on the Octra devnet — written by
+doing it end to end on real machines and writing down everything that went wrong.
+
+Copy, paste, check the expected output, move to the next step.
 
 Node software: <https://github.com/octra-labs/lite_node>. This is unofficial community
 documentation, written from a real install.
