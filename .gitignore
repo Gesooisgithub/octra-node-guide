@@ -1,0 +1,25 @@
+# Never commit validator identity or key material.
+# These patterns exist because a single accidental commit is unrecoverable:
+# anything pushed to a public repository must be considered permanently disclosed.
+
+wallet.json
+.keys/
+node.env
+*.key
+*.pem
+id_rsa*
+id_ed25519*
+*.ppk
+
+# Local notes and scratch files
+notes/
+scratch/
+*.local.md
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*~
+*.swp
