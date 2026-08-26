@@ -1,6 +1,6 @@
 # Octra Node Guide
 
-An unofficial, step-by-step guide to running a node on the Octra devnet — written by
+Step-by-step guide to running a node on the Octra devnet — written by
 doing it end to end on real machines and writing down everything that went wrong.
 
 The node software itself lives in the official repository:
