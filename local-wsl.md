@@ -30,7 +30,7 @@ curl https://api.ipify.org
 
 Three options:
 
-1. **Rent a small server** → [vps.md](vps.md). This is what we did, and it is much less
+1. **Rent a small server** → [vps.md](vps.md). This is what I did, and it is much less
    work than fighting your connection.
 2. **Ask your provider for a public IP address.** Many sell one as an add-on. Ask
    specifically for a *public, dedicated* address — a "static" one that is still shared

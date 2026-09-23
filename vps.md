@@ -12,7 +12,7 @@ something else, check [reference.md](reference.md).
 No commands. When ordering, make sure you get:
 
 - **4+ cores, 12+ GB RAM, 120+ GB disk** — the node alone settles around 6.5 GB of memory
-  ([numbers](reference.md#numbers-we-measured))
+  ([numbers](reference.md#numbers-i-measured))
 - **Ubuntu 24.04** (or 22.04) — not Debian
 - **A dedicated public IPv4 address**
 - **Root access over SSH**

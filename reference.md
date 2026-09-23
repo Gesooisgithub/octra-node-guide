@@ -27,7 +27,7 @@ You do not need to read this. Come here when something surprises you.
 | New `sequence`, `action = required`, but `upgrade_available = False` | Nothing to apply — same code, re-issued notice. [Details below](#updates-and-why-they-are-not-optional). |
 | `validator_admission_pending` / `leave_running` after an update | The update worked; the node rejoins the active set by itself. Leave it alone. |
 | `enroll.sh status` shows `bond status = missing` | Harmless if it also shows `state = ready` and your bond. Your node only keeps recent history, and the bond transaction is older than that. |
-| Memory use roughly doubles in the first days | Normal. It settles around 6.5 GB. [Numbers](#numbers-we-measured). |
+| Memory use roughly doubles in the first days | Normal. It settles around 6.5 GB. [Numbers](#numbers-i-measured). |
 | Disk filling up | Run `octra storage.sh`. [Details below](#disk-keeps-growing). |
 
 ---
@@ -67,7 +67,7 @@ Match on `^status = observer_synced` instead.
 node that is not validating they often read `0`.
 
 This is not a broken network. Other nodes drop non-validators shortly after connecting, so
-your node reconnects continuously. In one 300-line slice of our log we counted **78**
+your node reconnects continuously. In one 300-line slice of my log I counted **78**
 `event = connected` lines while `stat.sh` was reporting `p2p_connected = 0` in the same
 minute — and the chain head kept advancing perfectly.
 
@@ -99,7 +99,7 @@ Being bonded is not the same as validating. Your node moves through stages:
 | `validator_active` | you are in and voting |
 
 **You can sit at `ready` for a long time.** The number of validator seats is a network
-parameter — not "everyone who bonded". When we enrolled, every seat was taken and existing
+parameter — not "everyone who bonded". When I enrolled, every seat was taken and existing
 members had priority, so a perfectly healthy node simply waited.
 
 **Do not re-run `enroll.sh join`** — it will not help. `enroll.sh activate` will refuse
@@ -197,11 +197,11 @@ everything it owned, including the process manager.
 On a normal Ubuntu server it is harmless, and it is the form the Octra team recommends, so
 it is the one this guide uses. Two things protect you there: stock Ubuntu ships
 `KillUserProcesses=no`, and once `install.sh` has registered pm2 as a systemd service the
-daemon lives in `system.slice/pm2-octra.service`, outside any login session's scope. We
-verified this on our VPS on 2026-08-30 — after two `-iu` sessions and 75 seconds, the pm2
+daemon lives in `system.slice/pm2-octra.service`, outside any login session's scope. I
+verified this on my VPS on 2026-08-30 — after two `-iu` sessions and 75 seconds, the pm2
 God daemon and the node still had the same PIDs and uptimes.
 
-On WSL it killed our node reliably, so the local guide keeps `sudo -H -u octra`. The same
+On WSL it killed my node reliably, so the local guide keeps `sudo -H -u octra`. The same
 caution applies anywhere pm2 was started by hand outside systemd: check with
 `systemctl show -p MainPID --value pm2-octra` and `cat /home/octra/.pm2/pm2.pid` — if the
 two numbers differ, or the unit is inactive, your daemon is not under systemd.
@@ -247,7 +247,7 @@ event = release_marker sequence = 8 action = required \
 
 A release marked **`action = required` changes the rules of consensus at a fixed point in
 time**. A node still running the old version when that point arrives computes different
-results from everyone else and falls off the network. We watched this happen: a node stuck
+results from everyone else and falls off the network. I watched this happen: a node stuck
 on an old release died repeatedly at the same point until the fix shipped.
 
 **Treat `expires_at` as a hard deadline** and apply well before it.
@@ -292,7 +292,7 @@ From the source, since the documentation is quiet on it:
 
 ---
 
-## Numbers we measured
+## Numbers I measured
 
 If your machine is wildly different from these, something is off.
 
@@ -318,9 +318,9 @@ is compiling next to it.
 
 The official README (<https://github.com/octra-labs/lite_node>) is a correct, compact list
 of commands. It is not a guide to operating a machine on the public Internet, and does not
-claim to be. Everything below is something we added or changed, with the reason.
+claim to be. Everything below is something I added or changed, with the reason.
 
-| # | What we do differently | Why |
+| # | What I do differently | Why |
 |---|---|---|
 | 1 | Add a firewall step; never expose 8080 | The control interface has no password. The README does not discuss ports. |
 | 2 | Harden SSH, and verify with `sshd -T` | Ubuntu's default config silently overrides hardening put in the wrong file. |
@@ -331,7 +331,7 @@ claim to be. Everything below is something we added or changed, with the reason.
 | 7 | Explicit key backup step before funding | The README never mentions that a key was generated and is now your responsibility. |
 | 8 | Test port 19000 from outside before enrolling | Better than enrolling and then debugging. |
 | 9 | Hand the process manager to systemd, verify with matching PIDs | The installer enables the systemd unit but nothing ever starts the daemon through it, so its automatic restart never applies. |
-| 10 | Say where `sudo -iu` is safe, instead of banning it | The team's own instructions use the login form. It is safe on stock Ubuntu with pm2 under systemd, and we verified that; it is fatal on WSL, and wherever pm2 was started outside systemd. A blanket ban teaches the wrong rule. |
+| 10 | Say where `sudo -iu` is safe, instead of banning it | The team's own instructions use the login form. It is safe on stock Ubuntu with pm2 under systemd, and I verified that; it is fatal on WSL, and wherever pm2 was started outside systemd. A blanket ban teaches the wrong rule. |
 | 11 | Check for updates every couple of days, treat `expires_at` as a deadline, and read `upgrade_available` rather than `action` | Required releases change consensus rules at a fixed point; a node left behind diverges. Every notice says `required`, even a re-issue of the same code. |
 | 12 | Warn that `check.sh` prints test fixtures | They look exactly like real node state. |
 | 13 | Explain that peer counters read zero harmlessly | Otherwise a healthy node looks disconnected. |
