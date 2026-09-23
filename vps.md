@@ -11,7 +11,8 @@ something else, check [reference.md](reference.md).
 
 No commands. When ordering, make sure you get:
 
-- **4+ cores, 8+ GB RAM, 120+ GB disk**
+- **4+ cores, 12+ GB RAM, 120+ GB disk** — the node alone settles around 6.5 GB of memory
+  ([numbers](reference.md#numbers-we-measured))
 - **Ubuntu 24.04** (or 22.04) — not Debian
 - **A dedicated public IPv4 address**
 - **Root access over SSH**
@@ -144,7 +145,7 @@ shortcut does that for you, so the rest of the guide stays short:
 ```bash
 cat > /usr/local/bin/octra <<'EOF'
 #!/bin/sh
-exec sudo -H -u octra sh -c "cd /opt/octra/libv_litecore && sh controls/$*"
+exec sudo -iu octra sh -c "cd /opt/octra/libv_litecore && sh controls/$*"
 EOF
 chmod 755 /usr/local/bin/octra
 ```
@@ -189,7 +190,7 @@ echo "Name: $NODE_NAME   Public address: $PUBLIC_IP"
 ```bash
 cd /opt/octra/libv_litecore
 NETSHA=$(cut -d' ' -f1 config/network.env.sha256)
-sudo -H -u octra sh -c "cd /opt/octra/libv_litecore && sh controls/config_val.sh \
+sudo -iu octra sh -c "cd /opt/octra/libv_litecore && sh controls/config_val.sh \
   --role observer --name $NODE_NAME --advertise $PUBLIC_IP:19000 \
   --api-port 8080 --consensus-port 19000 --p2p-port 9000 \
   --data-dir /var/lib/octra/devnet --sync-stage /var/lib/octra/devnet.state_sync \
@@ -323,9 +324,9 @@ Out of the box, if the process manager dies, nothing restarts your node. Fix it 
 
 ```bash
 octra stop.sh
-sudo -H -u octra pm2 kill
+sudo -iu octra pm2 kill
 systemctl start pm2-octra
-sudo -H -u octra pm2 list
+sudo -iu octra pm2 list
 ```
 
 Your node will show as **`stopped`** in that list. That is expected. Start it:
@@ -356,19 +357,25 @@ own. (SSH says `Connection refused` for ~20 seconds during the reboot. Normal.)
 
 ## Step 16 — Keep it updated
 
-**Check weekly.** Updates are not optional — they change the rules of the network on a
-deadline, and a node left behind stops working.
+**Check every couple of days.** Updates are not optional — they change the rules of the
+network on a deadline, and a node left behind stops working. In busy weeks a new one can
+ship almost daily.
 
 ```bash
 octra upgrade.sh
 ```
 
-**Look for:** `action = required` and an `expires_at` date. If you see them, apply before
-that date:
+**Look for:** `upgrade_available = True`. If you see it, apply before the `expires_at` date
+on the first line:
 
 ```bash
-setsid nohup octra upgrade.sh --apply > /var/log/octra-upgrade.log 2>&1 < /dev/null &
+setsid nohup octra upgrade.sh --apply --wait-seconds 900 > /var/log/octra-upgrade.log 2>&1 < /dev/null &
 ```
+
+> `upgrade_available = False` means there is nothing to apply — even if the first line says
+> `action = required` with a new `sequence` number. The team re-issues the release notice
+> when it expires, sometimes for the same code.
+> ([details](reference.md#updates-and-why-they-are-not-optional))
 
 Follow along with:
 
@@ -376,11 +383,16 @@ Follow along with:
 tail -f /var/log/octra-upgrade.log
 ```
 
-It takes **20–30 minutes** and goes quiet for long stretches while it compiles. That is
+It takes **10–30 minutes** and goes quiet for long stretches while it compiles. That is
 normal.
 
 **You should see, at the end:** `status = observer_synced` (or `validator_active`) with
 `binary_match = True`, `source_match = True`, `runtime_match = True`, `lag = 0`.
+
+> **A validator may end with `status = installed reason = validator_admission_pending
+> action = leave_running` instead.** The update worked: the node is on the new version and
+> caught up, it is just not back in the active set yet. It rejoins **by itself** — do what
+> it says and leave it running. Do not re-enroll.
 
 ---
 
@@ -392,6 +404,7 @@ octra enroll.sh status        # bond and validator state
 octra upgrade.sh              # is there an update (checks only)
 octra stop.sh                 # stop it
 octra run.sh                  # start it
+octra storage.sh              # what is using the disk
 df -h /                       # disk space
 ```
 

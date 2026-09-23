@@ -99,13 +99,16 @@ If you see anything else, stop — nothing below will work.
 From here it is **the same as the server guide**. Do
 **[vps.md Steps 5 to 11](vps.md#step-5--download-the-node)**, then come back here.
 
-Three differences for a home machine:
+Four differences for a home machine:
 
 - **Skip Step 4 (firewall)** in that guide — on Windows the firewall is handled in Step 6
   below.
 - In **Step 9**, use your public address for `--advertise`, or a dynamic DNS name if your
   address changes. Not your `192.168.x.x`.
 - Run every command with `sudo` in front, since you are not root.
+- **Wherever that guide says `sudo -iu octra`, type `sudo -H -u octra` instead** —
+  including inside the `octra` shortcut of Step 7. On WSL the `-iu` form can kill the node.
+  ([why](reference.md#wsl-keeps-shutting-the-distro-down))
 
 ---
 
@@ -162,7 +165,8 @@ the wrong machine after a reboot.
 Now do **[vps.md Steps 12 to 16](vps.md#step-12--check-you-are-reachable)**: check you are
 reachable, get tokens, enroll, make it survive, keep it updated.
 
-Step 15 (making it survive) applies to your PC too.
+Step 15 (making it survive) applies to your PC too — with `sudo -H -u octra` in place of
+`sudo -iu octra`, as in Step 4.
 
 ---
 
