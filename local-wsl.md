@@ -51,7 +51,7 @@ wsl --install -d Ubuntu-24.04 --no-launch
 
 ---
 
-## Step 2 — Move it to a disk with room (skip if C: has 50+ GB free)
+## Step 2 — Move it to a disk with room (skip if C: has 150+ GB free)
 
 ```powershell
 wsl --shutdown

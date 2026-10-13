@@ -27,7 +27,7 @@ You do not need to read this. Come here when something surprises you.
 | New `sequence`, `action = required`, but `upgrade_available = False` | Nothing to apply — same code, re-issued notice. [Details below](#updates-and-why-they-are-not-optional). |
 | `validator_admission_pending` / `leave_running` after an update | The update worked; the node rejoins the active set by itself. Leave it alone. |
 | `enroll.sh status` shows `bond status = missing` | Harmless if it also shows `state = ready` and your bond. Your node only keeps recent history, and the bond transaction is older than that. |
-| Memory use roughly doubles in the first days | Normal. It settles around 6.5 GB. [Numbers](#numbers-i-measured). |
+| Node restarts by itself every day or two, memory past 8 GB | The system is killing it for lack of memory. [Add swap](#memory-and-swap). |
 | Disk filling up | Run `octra storage.sh`. [Details below](#disk-keeps-growing). |
 
 ---
@@ -210,8 +210,9 @@ two numbers differ, or the unit is inactive, your daemon is not under systemd.
 
 ## Disk keeps growing
 
-It should not, any more. The node now prunes its own history roughly every two days, so the
-live directory stays flat at around 44 GB. Check what is using the space:
+Slowly, and that is expected. The node prunes its old history roughly every two days, but the
+state it keeps grows with the chain: about 44 GB after the first sync in August, 77 GB by
+mid-October. That is why the guide now asks for 200 GB. Check what is using the space:
 
 ```bash
 octra storage.sh
@@ -231,8 +232,8 @@ octra storage.sh --prune-prior --yes
 with `rm -rf`, before the official tool existed. Use `storage.sh`.
 
 The one thing nothing cleans is the log file,
-`/opt/octra/libv_litecore/data/operator_logs/node.log`. It grows about 90 MB a day — not a
-problem on a 120 GB disk, but it only goes up.
+`/opt/octra/libv_litecore/data/operator_logs/node.log`. It grows about 90 MB a day — small
+next to the node's data, but it only goes up.
 
 ---
 
@@ -262,6 +263,12 @@ really something to apply.
 **`status = refused reason = release marker is expired`** means the notice has run out and
 the new one is not out yet. Nothing is wrong with your node — it keeps running and never
 reads the notice. Try again later.
+
+**Why `--wait-seconds 3600`:** it is how long the tool waits for the restarted node to come
+back up and catch up with the network. On my server that takes 20–30 minutes, and from
+release 32 on one hour is the tool's own default. Getting back into the active set comes
+after that and is not part of the wait: a validator usually ends with
+`validator_admission_pending` and rejoins on its own 10–20 minutes later.
 
 About `runtime_match = False`, which looks alarming:
 
@@ -301,16 +308,45 @@ If your machine is wildly different from these, something is off.
 | `install.sh --source-build` | ~6 minutes on 6 cores |
 | Update, start to finish | 10–30 minutes on 6 cores |
 | State-sync snapshot | ~38 GB |
-| Disk after first sync | ~44 GB, then flat — the node prunes its history every ~2 days |
-| Memory right after a restart | ~3.5 GB |
-| Memory once settled | ~6.5 GB, reached in the first 2–3 days and then flat (6.47 GB at 2½ days, 6.57 GB at 5 days) |
+| Restart to caught up, during an update | 20–30 minutes |
+| Node data on disk | ~44 GB after the first sync (August), 77 GB by mid-October — it prunes every ~2 days but still grows |
+| Memory right after a restart | ~8 GB within half an hour (October releases; it was ~3.5 GB in September) |
+| Memory over time | No longer settles: ~8.5 GB after a day, and on 12 GB with no swap the system killed it at about 9 GB |
 | Log file growth | ~90 MB/day, never rotated |
 | Start to `rpc = ready` | 2–3 minutes |
 
-**About memory:** most rented servers come with **no swap**. With no swap, running out of
-memory does not slow the node down — the system kills it. That is why the guide asks for
-12 GB: 8 GB leaves too little room once the node has settled, especially while an update
-is compiling next to it.
+---
+
+## Memory and swap
+
+Most rented servers come with **no swap**. With no swap, running out of memory does not slow
+the node down — the system kills it, and the process manager starts it again from scratch.
+
+Until September the node settled around 6.5 GB and 12 GB of RAM was plenty. The October
+releases changed that: memory starts at about 8 GB and keeps climbing, and on my 12 GB
+server with no swap the system killed the node three times in a week (7, 11 and 13
+October). Each time it came back and rejoined the active set by itself, but it earns
+nothing while it is out. Updates are at risk too, because they compile next to the running
+node.
+
+To check whether it has happened to yours:
+
+```bash
+journalctl -k | grep -i 'out of memory'
+```
+
+If it has, add 8 GB of swap. It takes a minute and nothing needs restarting:
+
+```bash
+fallocate -l 8G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+swapon --show
+```
+
+**You should see:** a line starting with `/swapfile file 8G`.
+
+Swap does not stop the growth. It gives the node several more gigabytes before the system
+steps in, and every update restarts it from a clean slate.
 
 ---
 
@@ -340,6 +376,7 @@ claim to be. Everything below is something I added or changed, with the reason.
 | 16 | Note PowerShell quoting for Windows users | The failure mode is a misleading "file not found". |
 | 17 | Test for CGNAT before installing anything (home guide) | The README assumes a reachable host. Finding out at the end costs a day. |
 | 18 | Document the WSL distro-shutdown behaviour | It looks exactly like a crash loop. |
+| 19 | Add 8 GB of swap on the server | The README gives no memory figures. Since the October releases the node grows past 9 GB, and on a 12 GB server with no swap the system kills it every day or two. |
 
 ---
 

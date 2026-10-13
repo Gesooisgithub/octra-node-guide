@@ -11,8 +11,9 @@ something else, check [reference.md](reference.md).
 
 No commands. When ordering, make sure you get:
 
-- **4+ cores, 12+ GB RAM, 120+ GB disk** — the node alone settles around 6.5 GB of memory
-  ([numbers](reference.md#numbers-i-measured))
+- **4+ cores, 12+ GB RAM, 200+ GB disk** — recent releases use 8–9 GB of memory and keep
+  climbing, so Step 2 also adds swap; the node's data passed 75 GB in October and still
+  grows ([numbers](reference.md#numbers-i-measured))
 - **Ubuntu 24.04** (or 22.04) — not Debian
 - **A dedicated public IPv4 address**
 - **Root access over SSH**
@@ -27,7 +28,7 @@ find.
 
 ---
 
-## Step 2 — Log in and update
+## Step 2 — Log in, update and add swap
 
 ```bash
 ssh root@YOUR_SERVER_IP
@@ -38,6 +39,17 @@ apt-get update && apt-get upgrade -y && reboot
 ```
 
 Wait a minute, then log back in.
+
+Add 8 GB of swap. Without it, the system kills the node when memory runs out
+([why](reference.md#memory-and-swap)):
+
+```bash
+fallocate -l 8G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+swapon --show
+```
+
+**You should see:** a line starting with `/swapfile file 8G`.
 
 > **On Windows?** In PowerShell, always put **double quotes outside, single quotes inside**
 > for remote commands. Otherwise the quotes get eaten and you get confusing "file not
@@ -369,7 +381,7 @@ octra upgrade.sh
 on the first line:
 
 ```bash
-setsid nohup octra upgrade.sh --apply --wait-seconds 900 > /var/log/octra-upgrade.log 2>&1 < /dev/null &
+setsid nohup octra upgrade.sh --apply --wait-seconds 3600 > /var/log/octra-upgrade.log 2>&1 < /dev/null &
 ```
 
 > `upgrade_available = False` means there is nothing to apply — even if the first line says
