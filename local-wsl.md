@@ -62,7 +62,7 @@ wsl --manage Ubuntu-24.04 --move D:\WSL\Ubuntu-24.04
 
 ---
 
-## Step 3 — Turn on systemd
+## Step 3 — Turn on systemd and give it memory
 
 Open Ubuntu and edit `/etc/wsl.conf`:
 
@@ -76,21 +76,28 @@ appendWindowsPath=false
 EOF
 ```
 
-Back in PowerShell:
+Back in PowerShell, give WSL enough memory. By default it gets only half of your PC's RAM —
+on a 16 GB PC that is 8 GB, less than the node uses
+([numbers](reference.md#numbers-i-measured)). Your PC needs at least 16 GB.
 
 ```powershell
-wsl --terminate Ubuntu-24.04
+Set-Content -Path "$env:USERPROFILE\.wslconfig" -Value "[wsl2]`nmemory=12GB`nswap=8GB"
+wsl --shutdown
 ```
+
+This replaces any `.wslconfig` you already had. If you had one, add those two lines under
+`[wsl2]` by hand instead.
 
 Reopen Ubuntu and check:
 
 ```bash
 ps -p 1 -o comm=
+free -h
 ```
 
-**You should see:** `systemd`
+**You should see:** `systemd`, then a `Swap` line of `8.0Gi` and `Mem` around 11–12 Gi.
 
-If you see anything else, stop — nothing below will work.
+If the first line says anything else, stop — nothing below will work.
 
 ---
 
@@ -136,8 +143,8 @@ a Task Scheduler task that runs at logon. ([details](reference.md#wsl-keeps-shut
 
 Four things must all be right. Skip this entirely if you are not validating.
 
-**1. Windows must see WSL's port.** Add a portproxy, or put `networkingMode=mirrored` in
-your `.wslconfig`.
+**1. Windows must see WSL's port.** Add a portproxy, or add `networkingMode=mirrored` under
+`[wsl2]` in the `.wslconfig` from Step 3 (then `wsl --shutdown`).
 
 **2. Windows Firewall must allow it.** Create inbound TCP rules for **19000** and **9000**,
 and set the profile to **Any**:

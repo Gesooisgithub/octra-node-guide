@@ -26,7 +26,8 @@ every network step. You will not earn anything.
 ## Requirements
 
 - A machine with **4+ cores, 12+ GB RAM, 200+ GB disk**, running **Ubuntu 22.04 or 24.04**
-  (the server guide also adds 8 GB of swap)
+  (the server guide also adds 8 GB of swap; a Windows PC needs 16+ GB, since WSL gets only
+  part of it)
 - A **public IP address** the machine actually owns (only if you want to validate)
 - **1 OCT** (1,000,000 raw units) for the bond, plus a little for fees
 - Half a day, most of it waiting on a download

@@ -244,8 +244,8 @@ If it refuses with `candidate paths are stale`:
 octra run.sh --rebind-runtime
 ```
 
-**Now wait 3 minutes without touching it.** The node replays history before it opens up.
-`rpc = unavailable` during this time is normal.
+**Now wait about 10 minutes without touching it.** The node replays history before it opens
+up. `rpc = unavailable` during this time is normal.
 
 Then:
 
@@ -362,8 +362,9 @@ Prove it with a reboot:
 systemctl reboot
 ```
 
-Wait two minutes, log back in, and run `octra stat.sh`. Everything should be back on its
-own. (SSH says `Connection refused` for ~20 seconds during the reboot. Normal.)
+Wait two minutes, log back in, and run `octra stat.sh`. You should see `process = online`
+straight away; `rpc = ready` comes back after the same wait as in Step 11. (SSH says
+`Connection refused` for ~20 seconds during the reboot. Normal.)
 
 ---
 
@@ -419,6 +420,18 @@ octra run.sh                  # start it
 octra storage.sh              # what is using the disk
 df -h /                       # disk space
 ```
+
+**Is it really keeping up?** `process = online` is not enough — a stuck node says it too.
+Compare your node's `head_epoch` with the public chain's:
+
+```bash
+octra stat.sh | grep '^head_epoch'
+curl -s https://devnet.octrascan.io/rpc -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"node_status","params":[]}' | grep -o '"head_epoch":[0-9]*'
+```
+
+**You should see:** two numbers a few apart at most. If yours is hundreds behind and the gap
+keeps growing, see [reference.md](reference.md#node-stuck-behind-the-chain).
 
 ---
 

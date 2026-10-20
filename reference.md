@@ -12,13 +12,16 @@ You do not need to read this. Come here when something surprises you.
 
 | What you see | What it means |
 |---|---|
-| `rpc = unavailable` just after starting | Normal for 2–3 minutes. It is replaying history. Leave it alone — restarting in a panic means it never finishes. |
+| `rpc = unavailable` just after starting | Normal for about 10 minutes after a sync, 20–30 minutes on a node that has been running for weeks. It is replaying history. Leave it alone — restarting in a panic means it never finishes. |
 | `run.sh` says `candidate paths are stale` | Normal on first run. Use `octra run.sh --rebind-runtime`. |
 | Alarming events during `check.sh` or an upgrade | Test fixtures, not your node. [Details below](#checksh-prints-alarming-nonsense). |
 | `p2p_connected = 0`, `round_peers = 0` | Usually fine. [Details below](#peer-counters-read-zero). |
 | `source_match = False`, `runtime_match = False` | Either a restart that has not settled, or an update is available. Run `octra upgrade.sh`. |
 | Port 19000 times out from outside | [Details below](#port-19000-is-not-reachable). |
 | Bonded and `ready` but never `active` | [Details below](#bonded-and-ready-but-never-active). |
+| `validator_active = false` with `validator_scheduled = true` | The active set rotates. Your node comes back by itself at `validator_activation_epoch`. [Details below](#bonded-and-ready-but-never-active). |
+| `voting = disabled` with `voting_reason = not_ready` or `not_member` after a restart | Normal. It votes again once caught up and back in the set, usually 20–45 minutes. If it lasts hours, [check it is not stuck](#node-stuck-behind-the-chain). |
+| `process = online` but `head_epoch` far behind the public chain | The node is stuck. [Details below](#node-stuck-behind-the-chain). |
 | "File not found" for a file that exists (Windows) | [PowerShell quoting](#windows-powershell-quoting). |
 | Node vanishes and nothing restarts it | The process manager was never handed to systemd. Do [vps.md Step 15](vps.md#step-15--make-it-survive). |
 | SSH `Connection refused` right after a reboot | The machine is still booting. Wait 20 seconds. |
@@ -108,6 +111,12 @@ until the network schedules you.
 The seat limit is itself changed by protocol updates on a schedule. If you are stuck at
 `ready`, read the project's release notes before changing anything. Meanwhile the node
 keeps doing useful work — leave it running.
+
+**Once you are in, the set rotates.** Since the seats opened at the end of August, a healthy
+validator drops out of the active set now and then and comes back on its own. While it is
+out, `stat.sh` shows `validator_active = false`, `validator_scheduled = true` and a
+`validator_activation_epoch` a little ahead of `head_epoch`: that is the epoch it returns.
+Two readings a few minutes apart can disagree. Neither is an alarm.
 
 ---
 
@@ -233,7 +242,93 @@ with `rm -rf`, before the official tool existed. Use `storage.sh`.
 
 The one thing nothing cleans is the log file,
 `/opt/octra/libv_litecore/data/operator_logs/node.log`. It grows about 90 MB a day — small
-next to the node's data, but it only goes up.
+next to the node's data, but it only goes up. If you need the space back, empty it while the
+node is stopped, as in [the recovery steps](#node-stuck-behind-the-chain).
+
+---
+
+## Node stuck behind the chain
+
+`stat.sh` can report `process = online` and `rpc = ready` on a node that stopped following
+the chain hours ago. It happened to mine on 14 October: an intermittent read error during
+finality (`refuse_apply reason = rule anchor unreadable ... epoch log entry missing` in the
+log) put it in quarantine, and it sat there for 28 hours looking "online", with
+`voting = disabled voting_reason = not_ready` that never cleared.
+
+**The check that catches it** is comparing with the public chain, as in
+[vps.md, Everyday commands](vps.md#everyday-commands). If the public number is not moving
+either, the whole network is paused — that is not you, just wait.
+
+### Behind by a few hours: restart
+
+```bash
+octra stop.sh
+octra run.sh
+```
+
+Wait 10–30 minutes and compare again. On my node the restart cleared the read error at once;
+it still could not catch up, but only because it had been stuck for 28 hours.
+
+### Behind by a day or more: re-sync from a snapshot
+
+After a while the other nodes stop serving the epochs you missed, and no restart can catch
+up. The log tells you:
+
+```bash
+sudo -iu octra tail -n 300 /opt/octra/libv_litecore/data/operator_logs/node.log | grep sync_recovery
+```
+
+**If you see `action = recover.sh`**, you need the official recovery. It downloads a fresh
+snapshot and sets your old state aside until you delete it. Your key and bond are not touched.
+
+**1. Stop the node and check the space.** It needs about **115 GB free**: ~38 GB of download,
+plus twice the ~38 GB ledger while it unpacks.
+
+```bash
+octra stop.sh
+df -h /
+```
+
+**2. If `Avail` is under 115 GB**, empty the log and switch swap off for the duration. On a
+200 GB disk this is usually needed:
+
+```bash
+: > /opt/octra/libv_litecore/data/operator_logs/node.log
+swapoff /swapfile && rm /swapfile
+df -h /
+```
+
+**3. Recover**, inside tmux. About 45 minutes on my server, most of it downloading:
+
+```bash
+tmux new -s recover
+octra recover.sh --replace-state
+```
+
+**You should see, near the end:** `status = restored`. If it reports
+`space is insufficient` instead, it puts the old state back by itself
+(`status = rolled_back`, a few lines above a Python error): free more space and run it again.
+
+**4. Start it** and wait, as in [vps.md Step 11](vps.md#step-11--start-the-node):
+
+```bash
+octra run.sh
+```
+
+If it dropped out of the active set it shows `voting_reason = not_member` for a while, then
+rejoins by itself — 45 minutes for mine, after 30 hours away.
+
+**5. Once `head_epoch` matches the public chain**, delete the old state and put the swap
+back. The line in `/etc/fstab` is still there, so do not add it again:
+
+```bash
+octra storage.sh --prune-prior --yes
+fallocate -l 8G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+swapon --show
+```
+
+These are the commands of the official README's "Recover an oversized store", plus the
+space check.
 
 ---
 
@@ -262,7 +357,8 @@ really something to apply.
 
 **`status = refused reason = release marker is expired`** means the notice has run out and
 the new one is not out yet. Nothing is wrong with your node — it keeps running and never
-reads the notice. Try again later.
+reads the notice. Try again later. It can stay that way for days: release 32 expired on
+15 October and was still the latest one on 20 October.
 
 **Why `--wait-seconds 3600`:** it is how long the tool waits for the restarted node to come
 back up and catch up with the network. On my server that takes 20–30 minutes, and from
@@ -309,11 +405,13 @@ If your machine is wildly different from these, something is off.
 | Update, start to finish | 10–30 minutes on 6 cores |
 | State-sync snapshot | ~38 GB |
 | Restart to caught up, during an update | 20–30 minutes |
-| Node data on disk | ~44 GB after the first sync (August), 77 GB by mid-October — it prunes every ~2 days but still grows |
-| Memory right after a restart | ~8 GB within half an hour (October releases; it was ~3.5 GB in September) |
-| Memory over time | No longer settles: ~8.5 GB after a day, and on 12 GB with no swap the system killed it at about 9 GB |
+| Back in the active set after a restart | 20–45 minutes, every time so far |
+| Re-sync with `recover.sh --replace-state` | ~45 minutes; needs ~115 GB free |
+| Node data on disk | ~44 GB after the first sync (August), 77 GB by mid-October, ~39 GB again after a re-sync — it prunes every ~2 days but still grows 1–2 GB a day |
+| Memory, October releases | ~8 GB within half an hour of a restart, then climbing; on 12 GB with no swap the system killed it at about 9 GB |
+| Memory after a fresh re-sync | ~4 GB plus ~1.5 GB in swap, steady for days (16–20 October, same release) |
 | Log file growth | ~90 MB/day, never rotated |
-| Start to `rpc = ready` | 2–3 minutes |
+| Start to `rpc = ready` | ~10 minutes after a sync, 20–30 minutes after a few weeks of running (it was 2–3 in August) |
 
 ---
 
@@ -348,6 +446,11 @@ swapon --show
 Swap does not stop the growth. It gives the node several more gigabytes before the system
 steps in, and every update restarts it from a clean slate.
 
+With swap in place mine has not been killed since 13 October. After the
+[re-sync](#node-stuck-behind-the-chain) of 16 October, on the same release, it has held at
+about 4 GB plus 1.5 GB in swap for days — so a store that has run for weeks seems to weigh on
+memory too. Keep the swap either way.
+
 ---
 
 ## Where this guide differs from the official README
@@ -377,6 +480,8 @@ claim to be. Everything below is something I added or changed, with the reason.
 | 17 | Test for CGNAT before installing anything (home guide) | The README assumes a reachable host. Finding out at the end costs a day. |
 | 18 | Document the WSL distro-shutdown behaviour | It looks exactly like a crash loop. |
 | 19 | Add 8 GB of swap on the server | The README gives no memory figures. Since the October releases the node grows past 9 GB, and on a 12 GB server with no swap the system kills it every day or two. |
+| 20 | Compare `head_epoch` with the public chain, and say when a restart is enough and when to re-sync | `stat.sh` reports `online` on a node that is a day behind. The README's recovery command needs ~115 GB free, more than a 200 GB disk usually has spare. |
+| 21 | Raise WSL's memory limit (home guide) | By default WSL gets half the PC's memory, less than the node uses. |
 
 ---
 
