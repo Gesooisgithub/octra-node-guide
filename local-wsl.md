@@ -146,12 +146,11 @@ Four things must all be right. Skip this entirely if you are not validating.
 **1. Windows must see WSL's port.** Add a portproxy, or add `networkingMode=mirrored` under
 `[wsl2]` in the `.wslconfig` from Step 3 (then `wsl --shutdown`).
 
-**2. Windows Firewall must allow it.** Create inbound TCP rules for **19000** and **9000**,
+**2. Windows Firewall must allow it.** Create an inbound TCP rule for **19000**,
 and set the profile to **Any**:
 
 ```powershell
 New-NetFirewallRule -DisplayName "Octra 19000" -Direction Inbound -Protocol TCP -LocalPort 19000 -Action Allow -Profile Any
-New-NetFirewallRule -DisplayName "Octra 9000"  -Direction Inbound -Protocol TCP -LocalPort 9000  -Action Allow -Profile Any
 ```
 
 **3. Your router must forward port 19000** to this PC. Look for **port forwarding** or

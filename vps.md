@@ -119,12 +119,15 @@ ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp comment 'ssh'
 ufw allow 19000/tcp comment 'octra consensus'
-ufw allow 9000/tcp comment 'octra p2p'
 ufw --force enable
 ufw status
 ```
 
-**You should see:** `22`, `9000` and `19000` allowed. **`8080` must not be there.**
+**You should see:** `22` and `19000` allowed. **`8080` must not be there.**
+
+Step 9 also names a p2p port, 9000, but the node never listens on it: with a consensus port
+set, all its peer traffic goes through 19000. If an older version of this guide had you open
+9000, close it with `ufw delete allow 9000/tcp`.
 
 ---
 
