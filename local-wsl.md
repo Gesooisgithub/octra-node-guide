@@ -5,10 +5,10 @@ two minutes. Everything after it assumes you passed.
 
 ---
 
-## Step 0 — Can your connection host a validator? (2 minutes)
+## Step 0: Can your connection host a validator? (2 minutes)
 
 A validator has to be **reachable from outside**. Many home connections share one public
-address between many customers, so nothing from the Internet can reach you — and no router
+address between many customers, so nothing from the Internet can reach you, and no router
 setting fixes it.
 
 **The test.** Open your router's admin page and find the WAN / Internet address it shows.
@@ -24,7 +24,7 @@ curl https://api.ipify.org
 |---|---|
 | **They match** | Good. Continue to Step 1. |
 | **They differ** | You cannot host a validator on this connection. See below. |
-| Router shows `100.64.x.x` – `100.127.x.x` | Same thing. You cannot host a validator. |
+| Router shows `100.64.x.x` to `100.127.x.x` | Same thing. You cannot host a validator. |
 
 ### If they differ
 
@@ -33,7 +33,7 @@ Three options:
 1. **Rent a small server** → [vps.md](vps.md). This is what I did, and it is much less
    work than fighting your connection.
 2. **Ask your provider for a public IP address.** Many sell one as an add-on. Ask
-   specifically for a *public, dedicated* address — a "static" one that is still shared
+   specifically for a *public, dedicated* address: a "static" one that is still shared
    does not help.
 3. **Run without validating.** The node still works and still follows the chain, it just
    never votes and never earns. Everything in this guide works except Step 6.
@@ -43,7 +43,7 @@ that never arrives.
 
 ---
 
-## Step 1 — Install WSL2
+## Step 1: Install WSL2
 
 ```powershell
 wsl --install -d Ubuntu-24.04 --no-launch
@@ -51,7 +51,7 @@ wsl --install -d Ubuntu-24.04 --no-launch
 
 ---
 
-## Step 2 — Move it to a disk with room (skip if C: has 150+ GB free)
+## Step 2: Move it to a disk with room (skip if C: has 150+ GB free)
 
 ```powershell
 wsl --shutdown
@@ -62,7 +62,7 @@ wsl --manage Ubuntu-24.04 --move D:\WSL\Ubuntu-24.04
 
 ---
 
-## Step 3 — Turn on systemd and give it memory
+## Step 3: Turn on systemd and give it memory
 
 Open Ubuntu and edit `/etc/wsl.conf`:
 
@@ -76,7 +76,7 @@ appendWindowsPath=false
 EOF
 ```
 
-Back in PowerShell, give WSL enough memory. By default it gets only half of your PC's RAM —
+Back in PowerShell, give WSL enough memory. By default it gets only half of your PC's RAM:
 on a 16 GB PC that is 8 GB, less than the node uses
 ([numbers](reference.md#numbers-i-measured)). Your PC needs at least 16 GB.
 
@@ -95,31 +95,31 @@ ps -p 1 -o comm=
 free -h
 ```
 
-**You should see:** `systemd`, then a `Swap` line of `8.0Gi` and `Mem` around 11–12 Gi.
+**You should see:** `systemd`, then a `Swap` line of `8.0Gi` and `Mem` around 11 to 12 Gi.
 
-If the first line says anything else, stop — nothing below will work.
+If the first line says anything else, stop: nothing below will work.
 
 ---
 
-## Step 4 — Install the node
+## Step 4: Install the node
 
 From here it is **the same as the server guide**. Do
-**[vps.md Steps 5 to 11](vps.md#step-5--download-the-node)**, then come back here.
+**[vps.md Steps 5 to 11](vps.md#step-5-download-the-node)**, then come back here.
 
 Four differences for a home machine:
 
-- **Skip Step 4 (firewall)** in that guide — on Windows the firewall is handled in Step 6
+- **Skip Step 4 (firewall)** in that guide: on Windows the firewall is handled in Step 6
   below.
 - In **Step 9**, use your public address for `--advertise`, or a dynamic DNS name if your
   address changes. Not your `192.168.x.x`.
 - Run every command with `sudo` in front, since you are not root.
-- **Wherever that guide says `sudo -iu octra`, type `sudo -H -u octra` instead** —
+- **Wherever that guide says `sudo -iu octra`, type `sudo -H -u octra` instead**,
   including inside the `octra` shortcut of Step 7. On WSL the `-iu` form can kill the node.
   ([why](reference.md#wsl-keeps-shutting-the-distro-down))
 
 ---
 
-## Step 5 — Keep the distro awake
+## Step 5: Keep the distro awake
 
 Windows shuts a WSL distro down when no Windows program is holding it open. Your node then
 looks like it is crash-looping when it is not.
@@ -139,7 +139,7 @@ a Task Scheduler task that runs at logon. ([details](reference.md#wsl-keeps-shut
 
 ---
 
-## Step 6 — Open the ports (validators only)
+## Step 6: Open the ports (validators only)
 
 Four things must all be right. Skip this entirely if you are not validating.
 
@@ -167,12 +167,12 @@ the wrong machine after a reboot.
 
 ---
 
-## Step 7 — Finish
+## Step 7: Finish
 
-Now do **[vps.md Steps 12 to 16](vps.md#step-12--check-you-are-reachable)**: check you are
+Now do **[vps.md Steps 12 to 16](vps.md#step-12-check-you-are-reachable)**: check you are
 reachable, get tokens, enroll, make it survive, keep it updated.
 
-Step 15 (making it survive) applies to your PC too — with `sudo -H -u octra` in place of
+Step 15 (making it survive) applies to your PC too, with `sudo -H -u octra` in place of
 `sudo -iu octra`, as in Step 4.
 
 ---

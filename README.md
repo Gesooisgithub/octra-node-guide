@@ -1,6 +1,6 @@
 # Octra Node Guide
 
-Step-by-step guide to running a node on the Octra devnet — written by
+Step-by-step guide to running a node on the Octra devnet, written by
 doing it end to end on real machines and writing down everything that went wrong.
 
 Copy, paste, check the expected output, move to the next step.
@@ -29,7 +29,9 @@ every network step. You will not earn anything.
   (the server guide also adds 8 GB of swap; a Windows PC needs 16+ GB, since WSL gets only
   part of it)
 - A **public IP address** the machine actually owns (only if you want to validate)
-- **1 OCT** (1,000,000 raw units) for the bond, plus a little for fees
+- **1 OCT** (1,000,000 raw units) for the bond, plus a little for fees. That is the minimum,
+  but rewards now follow stake, so 1 OCT earns close to nothing
+  ([details](reference.md#how-the-rewards-work))
 - Half a day, most of it waiting on a download
 
 ---
@@ -39,7 +41,8 @@ every network step. You will not earn anything.
 1. **Never open port 8080.** It is the node's control interface and has no password.
 2. **Never share `wallet.json`.** It signs your blocks. The faucet only needs your public
    `oct...` address.
-3. **Never run two nodes with the same key.** It is the only way to lose your stake.
+3. **Never run two nodes with the same key.** It is the only way to lose your stake, and
+   since November the address is then barred for good.
 4. **Back up your key before putting tokens on it.**
 5. **Being offline is not punished.** You just miss rewards while you are down.
 
@@ -57,4 +60,4 @@ every network step. You will not earn anything.
 
 ## License
 
-[MIT](LICENSE). Use it, adapt it, translate it — keep the copyright notice with it.
+[MIT](LICENSE). Use it, adapt it, translate it, and keep the copyright notice with it.

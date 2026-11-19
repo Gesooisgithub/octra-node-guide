@@ -1,4 +1,4 @@
-# Octra node on a rented server — 16 steps
+# Octra node on a rented server: 16 steps
 
 Follow in order. Each step has a command to paste and what you should see back. If you see
 something else, check [reference.md](reference.md).
@@ -7,18 +7,19 @@ something else, check [reference.md](reference.md).
 
 ---
 
-## Step 1 — Rent the server
+## Step 1: Rent the server
 
 No commands. When ordering, make sure you get:
 
-- **4+ cores, 12+ GB RAM, 200+ GB disk** — recent releases use 8–9 GB of memory and keep
-  climbing, so Step 2 also adds swap; the node's data passed 75 GB in October and still
-  grows ([numbers](reference.md#numbers-i-measured))
-- **Ubuntu 24.04** (or 22.04) — not Debian
+- **4+ cores, 12+ GB RAM, 200+ GB disk**: the node peaks near 8 GB of memory and keeps
+  about 4 GB more in swap, so Step 2 also adds swap; its data is about 50 GB since the
+  November release started cleaning up the store, and an update needs 9 GiB free to build
+  ([numbers](reference.md#numbers-i-measured))
+- **Ubuntu 24.04** (or 22.04), not Debian
 - **A dedicated public IPv4 address**
 - **Root access over SSH**
 
-**Which provider?** **Contabo** is the usual recommendation for this — the official Octra
+**Which provider?** **Contabo** is the usual recommendation for this: the official Octra
 README names it too, and it is what this guide was written on. Any provider that meets the
 list above works just as well.
 
@@ -28,7 +29,7 @@ find.
 
 ---
 
-## Step 2 — Log in, update and add swap
+## Step 2: Log in, update and add swap
 
 ```bash
 ssh root@YOUR_SERVER_IP
@@ -57,7 +58,7 @@ swapon --show
 
 ---
 
-## Step 3 — Lock down SSH
+## Step 3: Lock down SSH
 
 **On your own computer**, make a key and copy it up:
 
@@ -67,6 +68,12 @@ ssh-keygen -t ed25519 -C "octra node"
 
 ```bash
 ssh-copy-id root@YOUR_SERVER_IP
+```
+
+Windows has no `ssh-copy-id`. In PowerShell, use this instead:
+
+```powershell
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh root@YOUR_SERVER_IP "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 ```
 
 **Open a second terminal and check the key login works. Keep both open.**
@@ -88,11 +95,13 @@ sshd -T | grep -iE '^(passwordauthentication|permitrootlogin)'
 **You should see:**
 
 ```
+permitrootlogin without-password
 passwordauthentication no
-permitrootlogin prohibit-password
 ```
 
-**If it still says `yes`, do not reload — see [reference.md](reference.md#ssh-hardening-does-nothing).**
+(`without-password` is OpenSSH's other name for `prohibit-password`.)
+
+**If it still says `yes`, do not reload: see [reference.md](reference.md#ssh-hardening-does-nothing).**
 
 ```bash
 systemctl reload ssh
@@ -102,7 +111,7 @@ Open a third terminal and confirm you can still log in. Then close the others.
 
 ---
 
-## Step 4 — Firewall
+## Step 4: Firewall
 
 ```bash
 apt-get install -y ufw
@@ -119,7 +128,7 @@ ufw status
 
 ---
 
-## Step 5 — Download the node
+## Step 5: Download the node
 
 ```bash
 apt-get install -y ca-certificates git tmux
@@ -135,7 +144,7 @@ sha256sum -c config/network.env.sha256
 
 ---
 
-## Step 6 — Install the toolchain
+## Step 6: Install the toolchain
 
 ```bash
 cd /opt/octra/libv_litecore
@@ -149,7 +158,7 @@ Takes about **6 minutes**.
 
 ---
 
-## Step 7 — Add the `octra` shortcut
+## Step 7: Add the `octra` shortcut
 
 Every node command has to run as the `octra` user from a specific directory. This one-time
 shortcut does that for you, so the rest of the guide stays short:
@@ -166,7 +175,7 @@ From now on you type `octra stat.sh` instead of the long form.
 
 ---
 
-## Step 8 — Check the package
+## Step 8: Check the package
 
 ```bash
 octra check.sh
@@ -174,14 +183,13 @@ octra check.sh
 
 **You should see, at the very end:** `status = pass gate = validator_tools`
 
-> **Ignore everything above that line.** It is a test suite printing fake data — you will
-> see scary things like `status = validator_active`, `head_epoch = 41`, and
-> `event = recovery status = rolled_back`. **None of it is your node.**
-> ([why](reference.md#checksh-prints-alarming-nonsense))
+It prints about ten lines and takes seconds. Older versions ran the whole test suite here and
+printed alarming fake data; now that only happens with `check.sh --tests`.
+([details](reference.md#checksh-prints-alarming-nonsense))
 
 ---
 
-## Step 9 — Configure and sync
+## Step 9: Configure and sync
 
 This downloads about **38 GB**. Run it inside `tmux` so it survives a dropped connection.
 
@@ -219,7 +227,7 @@ Detach with **Ctrl+b** then **d**. Come back later with `tmux attach -t octra`.
 
 ---
 
-## Step 10 — Back up your key
+## Step 10: Back up your key
 
 ```bash
 cat /opt/octra/libv_litecore/.keys/validator/wallet.json
@@ -227,18 +235,18 @@ cat /opt/octra/libv_litecore/.keys/validator/wallet.json
 
 Copy **the whole thing** into a password manager. Then close the terminal output.
 
-**Do this before you put any tokens on it.** Nobody ever needs this file from you — the
+**Do this before you put any tokens on it.** Nobody ever needs this file from you: the
 faucet only needs the `oct...` address from Step 9.
 
 ---
 
-## Step 11 — Start the node
+## Step 11: Start the node
 
 ```bash
 octra run.sh
 ```
 
-If it refuses with `candidate paths are stale`:
+If it refuses with `runtime binding mismatch; run controls/run.sh --rebind-runtime`:
 
 ```bash
 octra run.sh --rebind-runtime
@@ -258,7 +266,7 @@ within one or two of `head_epoch`.
 
 ---
 
-## Step 12 — Check you are reachable
+## Step 12: Check you are reachable
 
 **From another machine, not the server:**
 
@@ -268,12 +276,12 @@ nc -vz YOUR_SERVER_IP 19000
 
 **You should see:** the port is open.
 
-If it times out, fix it before going further — you cannot validate without this.
+If it times out, fix it before going further: you cannot validate without this.
 ([what to check](reference.md#port-19000-is-not-reachable))
 
 ---
 
-## Step 13 — Get tokens
+## Step 13: Get tokens
 
 You need **1,000,000 raw units (1 OCT)** for the bond, plus a little extra for fees.
 
@@ -288,7 +296,7 @@ octra stat.sh | grep '^address'
 **You should see:** `address = oct...` followed by a long string.
 
 That is your **public** address. It is safe to share and it is the only thing the faucet
-needs. **Never send anyone the contents of `wallet.json`** — that is the key itself, and
+needs. **Never send anyone the contents of `wallet.json`**: that is the key itself, and
 nobody legitimate will ever ask for it.
 
 ### 13b. Claim from the faucet bot
@@ -308,7 +316,7 @@ curl -s https://devnet.octrascan.io/rpc -H 'content-type: application/json' \
 
 ---
 
-## Step 14 — Become a validator
+## Step 14: Become a validator
 
 Only when Steps 11, 12 and 13 all passed.
 
@@ -324,13 +332,15 @@ octra enroll.sh status
 
 **You should see:** `state = ready` and your `bond = 1000000`.
 
-> **Bonded is not yet validating.** You may sit at `ready` for hours or days waiting for a
-> free seat. That is normal and nothing is broken — do not re-run `join`.
+> **Bonded is not yet validating.** The node first has to show it takes part, then wait for
+> the next snapshot of the validator set. By the code that is 15 to 20 minutes for a healthy
+> node, and there is room: 51 to 55 of 200 places were taken on 19 November. Do not re-run
+> `join`.
 > ([why](reference.md#bonded-and-ready-but-never-active))
 
 ---
 
-## Step 15 — Make it survive
+## Step 15: Make it survive
 
 Out of the box, if the process manager dies, nothing restarts your node. Fix it once:
 
@@ -368,27 +378,34 @@ straight away; `rpc = ready` comes back after the same wait as in Step 11. (SSH 
 
 ---
 
-## Step 16 — Keep it updated
+## Step 16: Keep it updated
 
-**Check every couple of days.** Updates are not optional — they change the rules of the
-network on a deadline, and a node left behind stops working. In busy weeks a new one can
-ship almost daily.
+**Check twice a day.** Updates are not optional: they switch the rules of the network at an
+epoch written into the new code, and a node left behind stops there. Release 42 switched
+its rules 18 hours after it was announced, so one check a day at the wrong hour would have
+missed it.
 
 ```bash
 octra upgrade.sh
 ```
 
-**Look for:** `upgrade_available = True`. If you see it, apply before the `expires_at` date
-on the first line:
+What you can see:
+
+- **`status = refused reason = release marker is expired`** and nothing else: there is no
+  current notice. Nothing to do, check again later. This is the most common answer.
+- **`status = hold reason = release_channel_hold action = do_not_apply`** as the last line:
+  the team has paused the release. Do not apply, even if a line above says
+  `upgrade_available = True`.
+- **`upgrade_available = False`**: nothing to apply, even if the first line says
+  `action = required` with a new `sequence` number. The team re-issues the notice when it
+  expires, sometimes for the same code.
+- **`upgrade_available = True`** with no hold: apply it **the same day**. Do not plan around
+  the `expires_at` date on the first line: the rules can switch days before it.
+  ([why](reference.md#updates-and-why-they-are-not-optional))
 
 ```bash
 setsid nohup octra upgrade.sh --apply --wait-seconds 3600 > /var/log/octra-upgrade.log 2>&1 < /dev/null &
 ```
-
-> `upgrade_available = False` means there is nothing to apply — even if the first line says
-> `action = required` with a new `sequence` number. The team re-issues the release notice
-> when it expires, sometimes for the same code.
-> ([details](reference.md#updates-and-why-they-are-not-optional))
 
 Follow along with:
 
@@ -396,15 +413,15 @@ Follow along with:
 tail -f /var/log/octra-upgrade.log
 ```
 
-It takes **10–30 minutes** and goes quiet for long stretches while it compiles. That is
-normal.
+It takes **30 minutes to an hour**: a few minutes of building, then the restart and the
+catch-up, when the log goes quiet for long stretches. That is normal.
 
 **You should see, at the end:** `status = observer_synced` (or `validator_active`) with
 `binary_match = True`, `source_match = True`, `runtime_match = True`, `lag = 0`.
 
-> **A validator may end with `status = installed reason = validator_admission_pending
+> **A validator may end with `status = installed reason = validator_entry_pending
 > action = leave_running` instead.** The update worked: the node is on the new version and
-> caught up, it is just not back in the active set yet. It rejoins **by itself** — do what
+> caught up, it is just not back in the active set yet. It rejoins **by itself**: do what
 > it says and leave it running. Do not re-enroll.
 
 ---
@@ -421,7 +438,7 @@ octra storage.sh              # what is using the disk
 df -h /                       # disk space
 ```
 
-**Is it really keeping up?** `process = online` is not enough — a stuck node says it too.
+**Is it really keeping up?** `process = online` is not enough: a stuck node says it too.
 Compare your node's `head_epoch` with the public chain's:
 
 ```bash
@@ -437,5 +454,5 @@ keeps growing, see [reference.md](reference.md#node-stuck-behind-the-chain).
 
 ## Something looks wrong?
 
-Go to **[reference.md](reference.md)** — it has a symptom table and the explanation behind
+Go to **[reference.md](reference.md)**: it has a symptom table and the explanation behind
 every warning in this guide.

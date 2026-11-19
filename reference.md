@@ -12,23 +12,26 @@ You do not need to read this. Come here when something surprises you.
 
 | What you see | What it means |
 |---|---|
-| `rpc = unavailable` just after starting | Normal for about 10 minutes after a sync, 20–30 minutes on a node that has been running for weeks. It is replaying history. Leave it alone — restarting in a panic means it never finishes. |
-| `run.sh` says `candidate paths are stale` | Normal on first run. Use `octra run.sh --rebind-runtime`. |
-| Alarming events during `check.sh` or an upgrade | Test fixtures, not your node. [Details below](#checksh-prints-alarming-nonsense). |
+| `rpc = unavailable` just after starting | Normal for about 10 minutes. It is replaying history, and if it was down for a while it catches up before it answers (17 more minutes after two hours down). Leave it alone: restarting in a panic means it never finishes. |
+| `run.sh` says `runtime binding mismatch` | The node binary or source changed after it was configured (for example a manual rebuild). Use `octra run.sh --rebind-runtime`. |
+| Alarming events (`head_epoch = 41`, `.example` hosts) from `check.sh --tests` | Test fixtures, not your node. [Details below](#checksh-prints-alarming-nonsense). |
 | `p2p_connected = 0`, `round_peers = 0` | Usually fine. [Details below](#peer-counters-read-zero). |
 | `source_match = False`, `runtime_match = False` | Either a restart that has not settled, or an update is available. Run `octra upgrade.sh`. |
 | Port 19000 times out from outside | [Details below](#port-19000-is-not-reachable). |
 | Bonded and `ready` but never `active` | [Details below](#bonded-and-ready-but-never-active). |
-| `validator_active = false` with `validator_scheduled = true` | The active set rotates. Your node comes back by itself at `validator_activation_epoch`. [Details below](#bonded-and-ready-but-never-active). |
-| `voting = disabled` with `voting_reason = not_ready` or `not_member` after a restart | Normal. It votes again once caught up and back in the set, usually 20–45 minutes. If it lasts hours, [check it is not stuck](#node-stuck-behind-the-chain). |
+| `validator_active = false` with `validator_scheduled = true` | The node missed too many recent votes and sat out a snapshot. It comes back by itself at `validator_activation_epoch`. [Details below](#bonded-and-ready-but-never-active). |
+| `voting = disabled` with `voting_reason = not_ready` or `not_member` after a restart | Normal. It votes again once caught up and back in the set, usually 20 to 45 minutes. If it lasts hours, [check it is not stuck](#node-stuck-behind-the-chain). |
 | `process = online` but `head_epoch` far behind the public chain | The node is stuck. [Details below](#node-stuck-behind-the-chain). |
 | "File not found" for a file that exists (Windows) | [PowerShell quoting](#windows-powershell-quoting). |
-| Node vanishes and nothing restarts it | The process manager was never handed to systemd. Do [vps.md Step 15](vps.md#step-15--make-it-survive). |
+| Node vanishes and nothing restarts it | The process manager was never handed to systemd. Do [vps.md Step 15](vps.md#step-15-make-it-survive). |
 | SSH `Connection refused` right after a reboot | The machine is still booting. Wait 20 seconds. |
-| Log looks frozen during an upgrade | The compiler prints nothing for long stretches. Check it is alive with `ps -eo pid,pcpu,comm --sort=-pcpu \| head`. |
+| Log looks frozen during an upgrade | Building takes minutes; the long quiet part is the restart and catch-up, when the tool prints only when something changes. Check with `octra stat.sh` or `ps -eo pid,pcpu,comm --sort=-pcpu \| head`. |
 | `upgrade.sh` says `status = refused reason = release marker is expired` | The release notice ran out and the team has not re-issued it yet. Your node is fine. [Details below](#updates-and-why-they-are-not-optional). |
-| New `sequence`, `action = required`, but `upgrade_available = False` | Nothing to apply — same code, re-issued notice. [Details below](#updates-and-why-they-are-not-optional). |
-| `validator_admission_pending` / `leave_running` after an update | The update worked; the node rejoins the active set by itself. Leave it alone. |
+| New `sequence`, `action = required`, but `upgrade_available = False` | Nothing to apply: same code, re-issued notice. [Details below](#updates-and-why-they-are-not-optional). |
+| `upgrade.sh` says `status = hold reason = release_channel_hold` | The team has paused the release. Do not apply; check again later. |
+| Node stuck on one epoch while the public chain moves on, soon after a release notice | It missed the switch to the new rules. Update now. [Details below](#updates-and-why-they-are-not-optional). |
+| `validator_entry_pending` / `leave_running` after an update | The update worked; the node rejoins the active set by itself. Leave it alone. |
+| Node restarted by itself early one morning, nothing wrong in the log | Ubuntu's automatic updates restarted it after a system library update (mine on 14 November). It comes back by itself. |
 | `enroll.sh status` shows `bond status = missing` | Harmless if it also shows `state = ready` and your bond. Your node only keeps recent history, and the bond transaction is older than that. |
 | Node restarts by itself every day or two, memory past 8 GB | The system is killing it for lack of memory. [Add swap](#memory-and-swap). |
 | Disk filling up | Run `octra storage.sh`. [Details below](#disk-keeps-growing). |
@@ -37,8 +40,13 @@ You do not need to read this. Come here when something surprises you.
 
 ## `check.sh` prints alarming nonsense
 
-`check.sh` runs the project's test suite, and the tests print their **fake data** to the
-screen. On a first run this is genuinely frightening. You will see things like:
+Plain `check.sh` no longer does this: since late September it runs a few quick checks, prints
+about ten lines and ends with `status = pass gate = validator_tools`. Updates no longer print
+test output either. The rest of this section applies to `check.sh --tests`, and to anything
+you kept from older versions.
+
+`check.sh --tests` runs the project's test suite, and the tests print their **fake data** to
+the screen. On a first run this is genuinely frightening. You will see things like:
 
 ```
 event = recovery status = rolled_back ...
@@ -58,10 +66,6 @@ event = bond status = resumed tx = aaaaaaaaaaaaaaaa... epoch = 101
 Only the lines *after* `Ran NNN tests ... OK` describe your node. The line that matters is
 the last one: `status = pass gate = validator_tools`.
 
-This trips up automation too: if you write a script that waits for the upgrade to finish by
-watching for `status = validator_active`, it will match the fake line and finish early.
-Match on `^status = observer_synced` instead.
-
 ---
 
 ## Peer counters read zero
@@ -72,7 +76,7 @@ node that is not validating they often read `0`.
 This is not a broken network. Other nodes drop non-validators shortly after connecting, so
 your node reconnects continuously. In one 300-line slice of my log I counted **78**
 `event = connected` lines while `stat.sh` was reporting `p2p_connected = 0` in the same
-minute — and the chain head kept advancing perfectly.
+minute, and the chain head kept advancing perfectly.
 
 **Judge connectivity by whether `head_epoch` is going up and `epoch` is keeping pace.** Not
 by those counters.
@@ -85,7 +89,7 @@ sudo -iu octra tail -n 300 /opt/octra/libv_litecore/data/operator_logs/node.log 
 ```
 
 **One exception:** once you are actually validating, `round_peers = 0` is no longer
-harmless — a validator needs peers to take part in a voting round. Watch it at that
+harmless: a validator needs peers to take part in a voting round. Watch it at that
 moment specifically.
 
 ---
@@ -101,22 +105,28 @@ Being bonded is not the same as validating. Your node moves through stages:
 | `validator_scheduled` | the network has slotted you into an upcoming set |
 | `validator_active` | you are in and voting |
 
-**You can sit at `ready` for a long time.** The number of validator seats is a network
-parameter — not "everyone who bonded". When I enrolled, every seat was taken and existing
-members had priority, so a perfectly healthy node simply waited.
+**When I enrolled in August, I sat at `ready` for a long time:** every seat was taken and
+members already in had priority. That has changed. There are now 200 places, filled by bond
+(highest first), members get no priority, and on 19 November only 51 to 55 were taken.
 
-**Do not re-run `enroll.sh join`** — it will not help. `enroll.sh activate` will refuse
-until the network schedules you.
+What decides now is **participation.** A node must have taken part for about 64 epochs
+(around 12 minutes), then wait for the next snapshot of the set, taken every 8 epochs and
+applied 8 epochs later. Reading the code, a healthy new validator should get in within 15 to
+20 minutes; I have not timed a fresh join under these rules. After a restart on 15 November
+mine was back in the set 13 minutes after it had caught up.
 
-The seat limit is itself changed by protocol updates on a schedule. If you are stuck at
-`ready`, read the project's release notes before changing anything. Meanwhile the node
-keeps doing useful work — leave it running.
+**Do not re-run `enroll.sh join`**: it will not help. `enroll.sh activate` will refuse
+until the network schedules you. If you stay at `ready` for hours, check the node is caught
+up ([below](#node-stuck-behind-the-chain)). Meanwhile it keeps doing useful work, so leave
+it running.
 
-**Once you are in, the set rotates.** Since the seats opened at the end of August, a healthy
-validator drops out of the active set now and then and comes back on its own. While it is
-out, `stat.sh` shows `validator_active = false`, `validator_scheduled = true` and a
+**Once you are in, you can drop out for a while.** Each snapshot leaves out members that
+signed fewer than 16 of the last 32 epochs, so a restart of a few minutes is enough. The log
+says `set_fold_refused ... reason = marks_short first = ... last = ... signed = 11 required = 16`. While it is out,
+`stat.sh` shows `validator_active = false`, `validator_scheduled = true` and a
 `validator_activation_epoch` a little ahead of `head_epoch`: that is the epoch it returns.
-Two readings a few minutes apart can disagree. Neither is an alarm.
+Nothing is taken from the bond. Two readings a few minutes apart can disagree. Neither is an
+alarm.
 
 ---
 
@@ -127,13 +137,13 @@ Check in this order:
 1. **The provider's own cloud firewall.** If you left it enabled, it blocks the port
    regardless of `ufw`. This is the most common cause.
 2. **Your advertised address.** Run
-   `grep advertise /opt/octra/libv_litecore/.keys/validator/node.env`. If it holds a
-   private address (`10.x`, `192.168.x`, `172.16–31.x`), other nodes are being told to
+   `grep -i advertise /opt/octra/libv_litecore/.keys/validator/node.env`. If it holds a
+   private address (`10.x`, `192.168.x`, `172.16.x` to `172.31.x`), other nodes are being told to
    reach you at an address that means nothing to them.
-3. **`ufw status`** — is 19000 allowed?
+3. **`ufw status`**: is 19000 allowed?
 4. **Is the node actually listening?** `ss -ltn | grep 19000`
 
-At home, add: is this CGNAT? See [local-wsl.md Step 0](local-wsl.md#step-0--can-your-connection-host-a-validator-2-minutes).
+At home, add: is this CGNAT? See [local-wsl.md Step 0](local-wsl.md#step-0-can-your-connection-host-a-validator-2-minutes).
 
 ---
 
@@ -145,9 +155,9 @@ In SSH configuration, **the first setting wins**, not the last. Files in
 
 Stock Ubuntu cloud images usually ship a `50-cloud-init.conf` containing
 `PasswordAuthentication yes`. Put your hardening in a file numbered *above* 50 and it is
-silently ignored — the config looks right and does nothing.
+silently ignored: the config looks right and does nothing.
 
-That is why [vps.md Step 3](vps.md#step-3--lock-down-ssh) writes `10-hardening.conf`, and
+That is why [vps.md Step 3](vps.md#step-3-lock-down-ssh) writes `10-hardening.conf`, and
 why it checks with `sshd -T` (which shows the **effective** result) instead of trusting the
 file.
 
@@ -177,7 +187,7 @@ directory, giving you a "file not found" error for a file that plainly exists.
 ssh root@SERVER "sudo -iu octra sh -c 'cd /opt/octra/libv_litecore && sh controls/stat.sh'"
 ```
 
-The `octra` shortcut from [vps.md Step 7](vps.md#step-7--add-the-octra-shortcut) avoids the
+The `octra` shortcut from [vps.md Step 7](vps.md#step-7-add-the-octra-shortcut) avoids the
 problem entirely:
 
 ```powershell
@@ -197,9 +207,9 @@ process ID.
 repeated `Startup finished in ...ms` while `/proc/uptime` runs continuously without
 resetting.
 
-The fix is in [local-wsl.md Step 5](local-wsl.md#step-5--keep-the-distro-awake).
+The fix is in [local-wsl.md Step 5](local-wsl.md#step-5-keep-the-distro-awake).
 
-There is a second WSL trap: **`sudo -iu octra` can kill the node — but only on WSL.**
+There is a second WSL trap: **`sudo -iu octra` can kill the node, but only on WSL.**
 The login form of `sudo` opens a session, and when that session ends systemd may kill
 everything it owned, including the process manager.
 
@@ -207,21 +217,28 @@ On a normal Ubuntu server it is harmless, and it is the form the Octra team reco
 it is the one this guide uses. Two things protect you there: stock Ubuntu ships
 `KillUserProcesses=no`, and once `install.sh` has registered pm2 as a systemd service the
 daemon lives in `system.slice/pm2-octra.service`, outside any login session's scope. I
-verified this on my VPS on 2026-08-30 — after two `-iu` sessions and 75 seconds, the pm2
+verified this on my VPS on 2026-08-30: after two `-iu` sessions and 75 seconds, the pm2
 God daemon and the node still had the same PIDs and uptimes.
 
 On WSL it killed my node reliably, so the local guide keeps `sudo -H -u octra`. The same
 caution applies anywhere pm2 was started by hand outside systemd: check with
-`systemctl show -p MainPID --value pm2-octra` and `cat /home/octra/.pm2/pm2.pid` — if the
+`systemctl show -p MainPID --value pm2-octra` and `cat /home/octra/.pm2/pm2.pid`: if the
 two numbers differ, or the unit is inactive, your daemon is not under systemd.
 
 ---
 
 ## Disk keeps growing
 
-Slowly, and that is expected. The node prunes its old history roughly every two days, but the
-state it keeps grows with the chain: about 44 GB after the first sync in August, 77 GB by
-mid-October. That is why the guide now asks for 200 GB. Check what is using the space:
+Since release 42 it barely grows. The data went from about 44 GB after the first sync in
+August to 77 GB by mid October, which is why the guide asks for 200 GB. In September the
+store clean-up still ran every two days or so; from mid October until release 42 it never
+ran: the log said `pack_gc status = delayed` every 100 epochs, because it wanted hundreds of
+gigabytes free.
+
+Release 42 (15 November) fixed that. The clean-up now runs about once a day, every 8,200 or
+so epochs, for 4 to 6.5 minutes, and the data sat at about 51 GB on 19 November. While it
+runs the disk is busy and memory jumps ([below](#memory-and-swap)). Check what is using the
+space:
 
 ```bash
 octra storage.sh
@@ -241,7 +258,7 @@ octra storage.sh --prune-prior --yes
 with `rm -rf`, before the official tool existed. Use `storage.sh`.
 
 The one thing nothing cleans is the log file,
-`/opt/octra/libv_litecore/data/operator_logs/node.log`. It grows about 90 MB a day — small
+`/opt/octra/libv_litecore/data/operator_logs/node.log`. It grows 45 to 50 MB a day: small
 next to the node's data, but it only goes up. If you need the space back, empty it while the
 node is stopped, as in [the recovery steps](#node-stuck-behind-the-chain).
 
@@ -257,7 +274,7 @@ log) put it in quarantine, and it sat there for 28 hours looking "online", with
 
 **The check that catches it** is comparing with the public chain, as in
 [vps.md, Everyday commands](vps.md#everyday-commands). If the public number is not moving
-either, the whole network is paused — that is not you, just wait.
+either, the whole network is paused: that is not you, just wait.
 
 ### Behind by a few hours: restart
 
@@ -266,7 +283,7 @@ octra stop.sh
 octra run.sh
 ```
 
-Wait 10–30 minutes and compare again. On my node the restart cleared the read error at once;
+Wait 10 to 30 minutes and compare again. On my node the restart cleared the read error at once;
 it still could not catch up, but only because it had been stuck for 28 hours.
 
 ### Behind by a day or more: re-sync from a snapshot
@@ -280,6 +297,9 @@ sudo -iu octra tail -n 300 /opt/octra/libv_litecore/data/operator_logs/node.log 
 
 **If you see `action = recover.sh`**, you need the official recovery. It downloads a fresh
 snapshot and sets your old state aside until you delete it. Your key and bond are not touched.
+If `octra run.sh` or `octra recover.sh` prints
+`event = recovery status = held ... action = recover.sh --replace-state --min-epoch N`, use
+exactly that command (with `octra` in front) in point 3 below.
 
 **1. Stop the node and check the space.** It needs about **115 GB free**: ~38 GB of download,
 plus twice the ~38 GB ledger while it unpacks.
@@ -290,7 +310,7 @@ df -h /
 ```
 
 **2. If `Avail` is under 115 GB**, empty the log and switch swap off for the duration. On a
-200 GB disk this is usually needed:
+200 GB disk it may be needed:
 
 ```bash
 : > /opt/octra/libv_litecore/data/operator_logs/node.log
@@ -309,14 +329,14 @@ octra recover.sh --replace-state
 `space is insufficient` instead, it puts the old state back by itself
 (`status = rolled_back`, a few lines above a Python error): free more space and run it again.
 
-**4. Start it** and wait, as in [vps.md Step 11](vps.md#step-11--start-the-node):
+**4. Start it** and wait, as in [vps.md Step 11](vps.md#step-11-start-the-node):
 
 ```bash
 octra run.sh
 ```
 
 If it dropped out of the active set it shows `voting_reason = not_member` for a while, then
-rejoins by itself — 45 minutes for mine, after 30 hours away.
+rejoins by itself: 45 minutes for mine, after 30 hours away.
 
 **5. Once `head_epoch` matches the public chain**, delete the old state and put the swap
 back. The line in `/etc/fstab` is still there, so do not add it again:
@@ -337,34 +357,67 @@ space check.
 `octra upgrade.sh` prints a line like:
 
 ```
-event = release_marker sequence = 8 action = required \
-  public_commit = ... expires_at = 2026-08-29T20:49:00Z
+event = release_marker source = origin sequence = 42 action = required \
+  public_commit = ... source_commit = ... expires_at = 2026-11-17T21:42:42Z
 ```
 
-A release marked **`action = required` changes the rules of consensus at a fixed point in
-time**. A node still running the old version when that point arrives computes different
-results from everyone else and falls off the network. I watched this happen: a node stuck
-on an old release died repeatedly at the same point until the fix shipped.
+A release marked **`action = required` changes the rules of consensus at a fixed epoch**,
+written into the new code. A node still running the old version when that epoch arrives
+cannot follow the network any more.
 
-**Treat `expires_at` as a hard deadline** and apply well before it.
+**`expires_at` is not the deadline.** It only says how long the notice stays valid (three
+days), and the switch can come well before it. Nothing in `upgrade.sh` prints the switch
+epoch. Release 42 shows the difference:
+
+| | UTC |
+|---|---|
+| Notice published | 14 November, 21:42 |
+| New rules switch on (epoch 1,845,000) | 15 November, 16:04, 18 hours later |
+| Notice expires | 17 November, 21:42 |
+
+My node was still on the old version at the switch. It stopped at epoch 1,844,999 with
+`voting = disabled` and almost no CPU, and sat there for two hours until I updated. Then it
+caught up and rejoined without a re-sync. **So apply on the day you see
+`upgrade_available = True`.**
+
+If you want to see the switch epochs in the latest code anyway, this reads them from the
+source (a hint, not an official field):
+
+```bash
+sudo -iu octra sh -c 'cd /opt/octra/libv_litecore && git fetch -q origin main && git grep -h "activation_epoch = " origin/main -- lib/consensus lib/core' | tr -dc '0-9\n' | sort -n | tail -1
+curl -s https://devnet.octrascan.io/rpc -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"epoch_current","params":[]}'
+```
+
+If the first number is higher than the `epoch_id` of the second, that is where the next
+switch happens. The network does about 320 epochs an hour. While a notice is on hold the
+number can still move (release 42 went from 1,842,000 to 1,845,000 before it shipped), so
+check again once the release is out.
 
 **A new `sequence` is not always new code.** Each release notice is valid for a few days,
-and when it runs out the team re-issues it with a new number — sometimes pointing at
-exactly the same code you already run. Every notice says `action = required`, so that word
-alone tells you nothing. The line to read is further down: `upgrade.sh` compares the notice
-with what you are running and prints **`upgrade_available = True`** only when there is
-really something to apply.
+and when it runs out the team re-issues it with a new number, sometimes pointing at exactly
+the same code you already run. Most notices say `action = required`, so that word alone
+tells you nothing. The line to read is further down: `upgrade.sh` compares the notice with
+what you are running and prints **`upgrade_available = True`** only when there is really
+something to apply.
+
+**A notice can also say `action = hold`**: the team has paused the release. `upgrade.sh`
+then prints `status = hold reason = release_channel_hold action = do_not_apply`, and
+`--apply` refuses. That happened on 13 November, the day before release 42.
 
 **`status = refused reason = release marker is expired`** means the notice has run out and
-the new one is not out yet. Nothing is wrong with your node — it keeps running and never
-reads the notice. Try again later. It can stay that way for days: release 32 expired on
-15 October and was still the latest one on 20 October.
+the new one is not out yet. Nothing is wrong with your node: it keeps running and never
+reads the notice. Try again later. It can stay that way for weeks: release 35's notice
+expired on 26 October and the next notice I saw came on 13 November.
 
 **Why `--wait-seconds 3600`:** it is how long the tool waits for the restarted node to come
-back up and catch up with the network. On my server that takes 20–30 minutes, and from
-release 32 on one hour is the tool's own default. Getting back into the active set comes
-after that and is not part of the wait: a validator usually ends with
-`validator_admission_pending` and rejoins on its own 10–20 minutes later.
+back up and catch up with the network, and one hour is the tool's own default. For release
+42 my node needed 27 minutes, because it had been stopped for two hours. Getting back into
+the active set comes after that and is not part of the wait: a validator usually ends with
+`validator_entry_pending` and rejoins on its own, 13 minutes later in my case.
+
+**The build needs 9 GiB free** on the disk (what `df -h` shows as `9G`); below that,
+`upgrade.sh` refuses.
 
 About `runtime_match = False`, which looks alarming:
 
@@ -381,17 +434,35 @@ About `runtime_match = False`, which looks alarming:
 
 From the source, since the documentation is quiet on it:
 
-- **There is no downtime penalty.** The only slashable offence is `vote_conflict` —
-  signing two conflicting blocks. There is no evidence type for being absent. Being
+- **There is no downtime penalty.** The only slashable offence is `vote_conflict`:
+  signing two different votes for the same epoch and round, which is what two nodes with one
+  key end up doing. There is no evidence type for being absent. Being
   offline costs you the rewards of the epochs you missed, nothing else.
 - **The only realistic way to lose your stake** is running two nodes with the same key.
-  When moving machines: stop the old one, verify it is stopped, then start the new one.
-- **Rewards:** 70% to whoever proposed the epoch, the other 30% split among everyone who
-  signed the commit.
+  The whole bond is burned, and since 15 November the address is also removed from the set
+  and can never bond again. When moving machines: stop the old one, verify it is stopped,
+  then start the new one.
+- **Rewards follow stake.** Each epoch pays a base amount plus most of the fees: 70% to the
+  proposer, 30% to the validators that signed. Since 24 October (epoch 1,737,333) both parts
+  go by bond: the proposer is drawn by bond, and the 30% is shared in proportion to it.
 - **A node that is not in the active set earns nothing.**
-- **Minimum bond: 1,000,000 raw units (1 OCT).** Keep extra for fees.
-- To leave: `octra enroll.sh exit`, then `octra enroll.sh withdraw`. To come back after a
-  long absence: `octra rejoin.sh`.
+- **Minimum bond: 1,000,000 raw units (1 OCT).** Keep extra for fees. But the active set held
+  630,000 to 672,000 OCT of bond on 19 November, so a 1 OCT bond earns close to nothing. At
+  that size, a validator earned about 1.9 OCT a day per 1,000 OCT of bond, after fees.
+- **To raise your bond**, the repository has `bond_inc.sh` (devnet only). It takes the amount
+  in **OCT**, not raw units, and works on an active validator with no exit pending, no
+  pending transaction, and a free balance of at least the amount plus 0.001 OCT. If it says
+  `account has pending transactions`, run it again a minute later. I have used the same tool
+  (a copy the team shared before it reached the repository). To add 100 OCT, for example:
+
+  ```bash
+  sudo -iu octra sh -c 'cd /opt/octra/libv_litecore && sh bond_inc.sh -a 100 -w .keys/validator/wallet.json'
+  ```
+
+  **You should see:** `event = bond_inc status = accepted`. For another increase later, add
+  `--new` once the first is confirmed.
+- **To leave:** `octra enroll.sh exit`. Once the node is out of the set and about 8,200
+  epochs (a little over a day) have passed, `octra enroll.sh withdraw`.
 
 ---
 
@@ -402,23 +473,26 @@ If your machine is wildly different from these, something is off.
 | | |
 |---|---|
 | `install.sh --source-build` | ~6 minutes on 6 cores |
-| Update, start to finish | 10–30 minutes on 6 cores |
-| State-sync snapshot | ~38 GB |
-| Restart to caught up, during an update | 20–30 minutes |
-| Back in the active set after a restart | 20–45 minutes, every time so far |
-| Re-sync with `recover.sh --replace-state` | ~45 minutes; needs ~115 GB free |
-| Node data on disk | ~44 GB after the first sync (August), 77 GB by mid-October, ~39 GB again after a re-sync — it prunes every ~2 days but still grows 1–2 GB a day |
+| Update, start to finish | 31 minutes for release 42 (2.5 of them building), about an hour for release 35 |
+| State-sync snapshot | ~38 GB (still on 19 November) |
+| Restart to caught up, during an update | 27 minutes for release 42, after two hours stopped |
+| Back in the active set after a restart | 20 to 45 minutes, every time so far (40 on 15 November) |
+| Re-sync with `recover.sh --replace-state` | ~45 minutes; needs ~115 GB free (October) |
+| Node data on disk | ~44 GB after the first sync (August), 77 GB by mid October, about 51 GB since release 42 cleans the store daily (19 November) |
+| Store clean-up (`pack_gc`), release 42 | Once a day, every ~8,200 epochs, 4 to 6.5 minutes |
 | Memory, October releases | ~8 GB within half an hour of a restart, then climbing; on 12 GB with no swap the system killed it at about 9 GB |
-| Memory after a fresh re-sync | ~4 GB plus ~1.5 GB in swap, steady for days (16–20 October, same release) |
-| Log file growth | ~90 MB/day, never rotated |
-| Start to `rpc = ready` | ~10 minutes after a sync, 20–30 minutes after a few weeks of running (it was 2–3 in August) |
+| Memory, release 42 | Peak 7.8 GB; after four days 5.4 GB in memory plus 4 GB in swap |
+| Log file growth | 45 to 50 MB/day since release 42, never rotated |
+| Start to `rpc = ready` | 8 to 10 minutes in November (releases 35 and 42), plus catch-up if it was behind (it was 2 to 3 in August) |
+| Epochs | About 320 an hour, one every 11 seconds |
+| Validator set | 51 to 55 validators, 630,000 to 672,000 OCT of bond in the active set (19 November) |
 
 ---
 
 ## Memory and swap
 
 Most rented servers come with **no swap**. With no swap, running out of memory does not slow
-the node down — the system kills it, and the process manager starts it again from scratch.
+the node down: the system kills it, and the process manager starts it again from scratch.
 
 Until September the node settled around 6.5 GB and 12 GB of RAM was plenty. The October
 releases changed that: memory starts at about 8 GB and keeps climbing, and on my 12 GB
@@ -446,10 +520,15 @@ swapon --show
 Swap does not stop the growth. It gives the node several more gigabytes before the system
 steps in, and every update restarts it from a clean slate.
 
-With swap in place mine has not been killed since 13 October. After the
-[re-sync](#node-stuck-behind-the-chain) of 16 October, on the same release, it has held at
-about 4 GB plus 1.5 GB in swap for days — so a store that has run for weeks seems to weigh on
-memory too. Keep the swap either way.
+With swap in place mine has not been killed since 13 October.
+
+Release 42 (15 November) peaks at about 7.8 GB, and after a few days keeps around 4 GB of
+the node in swap. The store clean-up, which now runs daily
+([above](#disk-keeps-growing)), pushes more into swap in steps while it runs: +1.9 GB on
+16 November, +1 GB on 18 November, nothing on the 17th. On 19 November my server had 4.9 of
+its 8 GB of swap in use, and it also runs a small second node held under 3 GB, so yours may
+need less. Keep the 8 GB of swap, and look at `free -h` now and then: if swap is nearly full,
+add more the same way.
 
 ---
 
@@ -471,17 +550,18 @@ claim to be. Everything below is something I added or changed, with the reason.
 | 8 | Test port 19000 from outside before enrolling | Better than enrolling and then debugging. |
 | 9 | Hand the process manager to systemd, verify with matching PIDs | The installer enables the systemd unit but nothing ever starts the daemon through it, so its automatic restart never applies. |
 | 10 | Say where `sudo -iu` is safe, instead of banning it | The team's own instructions use the login form. It is safe on stock Ubuntu with pm2 under systemd, and I verified that; it is fatal on WSL, and wherever pm2 was started outside systemd. A blanket ban teaches the wrong rule. |
-| 11 | Check for updates every couple of days, treat `expires_at` as a deadline, and read `upgrade_available` rather than `action` | Required releases change consensus rules at a fixed point; a node left behind diverges. Every notice says `required`, even a re-issue of the same code. |
-| 12 | Warn that `check.sh` prints test fixtures | They look exactly like real node state. |
+| 11 | Check for updates twice a day, apply the same day, and read `upgrade_available` rather than `action` | Required releases switch consensus rules at an epoch written in the code, which nothing prints: for release 42 it came 18 hours after the notice, days before `expires_at`. Most notices say `required`, even a re-issue of the same code. |
+| 12 | Warn that `check.sh --tests` prints test fixtures | They look exactly like real node state. Plain `check.sh` stopped printing them in September. |
 | 13 | Explain that peer counters read zero harmlessly | Otherwise a healthy node looks disconnected. |
 | 14 | Explain that bonded + ready ≠ active | Otherwise a correct node looks broken while it is merely waiting. |
 | 15 | Explain what `storage.sh` reports and when to prune | The README lists the commands; this says when you need them. Old state directories are tens of gigabytes each. |
 | 16 | Note PowerShell quoting for Windows users | The failure mode is a misleading "file not found". |
 | 17 | Test for CGNAT before installing anything (home guide) | The README assumes a reachable host. Finding out at the end costs a day. |
 | 18 | Document the WSL distro-shutdown behaviour | It looks exactly like a crash loop. |
-| 19 | Add 8 GB of swap on the server | The README gives no memory figures. Since the October releases the node grows past 9 GB, and on a 12 GB server with no swap the system kills it every day or two. |
-| 20 | Compare `head_epoch` with the public chain, and say when a restart is enough and when to re-sync | `stat.sh` reports `online` on a node that is a day behind. The README's recovery command needs ~115 GB free, more than a 200 GB disk usually has spare. |
+| 19 | Add 8 GB of swap on the server | The README gives no memory figures. In October the node grew past 9 GB, and on a 12 GB server with no swap the system killed it every day or two. Release 42 peaks near 8 GB and keeps about 4 GB more in swap. |
+| 20 | Compare `head_epoch` with the public chain, and say when a restart is enough and when to re-sync | `stat.sh` reports `online` on a node that is a day behind. The README's recovery command needs ~115 GB free, which a 200 GB disk may not have spare. |
 | 21 | Raise WSL's memory limit (home guide) | By default WSL gets half the PC's memory, less than the node uses. |
+| 22 | Explain that rewards follow stake, and how to raise the bond | The README predates both. With the 1 OCT minimum a validator now earns close to nothing, and `bond_inc.sh` is not in the README. |
 
 ---
 
